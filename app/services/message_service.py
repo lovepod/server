@@ -22,6 +22,39 @@ from app.utils.file_utils import sanitize_upload_filename
 logger = logging.getLogger(__name__)
 
 
+def _sniff_image_mime(raw: bytes) -> str | None:
+    if raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if len(raw) >= 3 and raw[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if raw.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    return None
+
+
+def _effective_stored_content_type(raw: bytes, content_type: str | None) -> str:
+    """
+    Normalize MIME for storage so clients that omit or mislabel types (e.g. PNG as octet-stream)
+    still get a correct Content-Type when the box reads the message.
+    """
+    ct = (content_type or "").strip()
+    low = ct.lower()
+    if low in ("image/x-png", "image/png"):
+        return "image/png"
+    if low in ("image/jpg", "image/pjpeg", "image/jpeg"):
+        return "image/jpeg"
+    if low == "image/gif":
+        return "image/gif"
+    if not ct or low in (
+        "application/octet-stream",
+        "binary/octet-stream",
+    ):
+        sniffed = _sniff_image_mime(raw)
+        if sniffed:
+            return sniffed
+    return ct or "application/octet-stream"
+
+
 class MessageService:
     def __init__(self, db: Session, app_settings: Settings) -> None:
         self._db = db
@@ -59,7 +92,7 @@ class MessageService:
         msg = Message(
             box_id=box.id,
             file_name=sanitize_upload_filename(filename),
-            file_type=content_type or "application/octet-stream",
+            file_type=_effective_stored_content_type(raw, content_type),
             message_uuid=str(uuid.uuid4()),
             size=len(raw),
             data=compressed,
@@ -86,11 +119,26 @@ class MessageService:
             content_type=content_type,
         )
 
+    def upload_text(
+        self,
+        api_token: str | None,
+        text: str,
+        filename: str | None,
+    ) -> MessageUploadResponse:
+        raw = text.encode("utf-8")
+        name = (filename or "").strip() or "message.txt"
+        return self.upload(
+            api_token=api_token,
+            raw=raw,
+            filename=name,
+            content_type="text/plain; charset=utf-8",
+        )
+
     def read_latest_jpeg(self, secret_key: str | None) -> bytes:
         if not secret_key or not secret_key.strip():
             raise BadRequestError("Missing secret-key")
 
-        sk = secret_key.strip()
+        sk = _normalize_secret_key(secret_key)
         q_box = select(Box).where(Box.secret_key == sk)
         box = self._db.execute(q_box).scalar_one_or_none()
         if box is None:
@@ -177,6 +225,50 @@ class MessageService:
         file_type = msg.file_type
         data_base64 = base64.b64encode(blob).decode("ascii")
         return file_type, data_base64, msg.file_name, msg.message_uuid
+
+    def read_latest_text_message(
+        self, secret_key: str | None
+    ) -> tuple[str, str, str | None, str | None]:
+        """
+        Peek at the latest message: if it is text/*, return UTF-8 text and metadata.
+        If the queue is empty → NotFoundError('No message for this box').
+        If the latest message is not text → NotFoundError('No text message').
+        """
+        if not secret_key or not secret_key.strip():
+            raise BadRequestError("Missing secret-key")
+
+        sk = secret_key.strip()
+        q_box = select(Box).where(Box.secret_key == sk)
+        box = self._db.execute(q_box).scalar_one_or_none()
+        if box is None:
+            raise NotFoundError("Unknown box")
+
+        q_msg = (
+            select(Message)
+            .where(Message.box_id == box.id)
+            .order_by(Message.created_at.desc())
+            .limit(1)
+        )
+        msg = self._db.execute(q_msg).scalar_one_or_none()
+        if msg is None:
+            raise NotFoundError("No message for this box")
+
+        ft = (msg.file_type or "").strip().lower()
+        if not ft.startswith("text/"):
+            raise NotFoundError("No text message")
+
+        try:
+            blob = decompress_image(msg.data)
+        except Exception:
+            logger.exception("decompress_image failed for message id=%s", msg.id)
+            raise InternalError("Could not read stored message") from None
+
+        try:
+            text = blob.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise BadRequestError("Text message is not valid UTF-8") from exc
+
+        return msg.file_type or "text/plain", text, msg.file_name, msg.message_uuid
 
     def consume_latest_blob_base64(
         self, secret_key: str | None

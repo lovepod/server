@@ -37,11 +37,25 @@ class MessageUploadBase64Request(BaseModel):
     content_type: str | None = Field(default=None, description="Optional MIME type to store")
 
 
+class MessageUploadTextRequest(BaseModel):
+    text: str = Field(..., min_length=1, description="Plain UTF-8 text body")
+    filename: str | None = Field(default=None, description="Optional filename (default message.txt)")
+
+
 class MessageReadBase64Response(BaseModel):
     fileType: str | None = None
     fileName: str | None = None
     messageUuid: str | None = None
     data_base64: str
+
+
+class MessageReadTextResponse(BaseModel):
+    """Latest queue message when it is text/* (peek; same semantics as read_base64)."""
+
+    fileType: str | None = None
+    fileName: str | None = None
+    messageUuid: str | None = None
+    text: str
 
 
 class MessageAckRequest(BaseModel):

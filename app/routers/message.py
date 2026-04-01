@@ -7,8 +7,10 @@ from app.deps import get_message_service
 from app.schemas import (
     MessageAckRequest,
     MessageReadBase64Response,
+    MessageReadTextResponse,
     MessageUploadBase64Request,
     MessageUploadResponse,
+    MessageUploadTextRequest,
 )
 from app.services.message_service import MessageService
 
@@ -44,6 +46,19 @@ async def upload_message_base64(
     )
 
 
+@router.post("/upload_text", response_model=MessageUploadResponse, response_model_exclude_none=True)
+def upload_message_text(
+    body: MessageUploadTextRequest,
+    service: MessageService = Depends(get_message_service),
+    x_api_key: str | None = Header(default=None, alias="x-api-key"),
+) -> MessageUploadResponse:
+    return service.upload_text(
+        api_token=x_api_key,
+        text=body.text,
+        filename=body.filename,
+    )
+
+
 @router.get("/read")
 def read_message(
     service: MessageService = Depends(get_message_service),
@@ -51,6 +66,24 @@ def read_message(
 ) -> Response:
     blob, file_type = service.read_latest_blob(secret_key)
     return Response(content=blob, media_type=file_type or "application/octet-stream")
+
+
+@router.get("/read_text", response_model=MessageReadTextResponse)
+def read_message_text(
+    service: MessageService = Depends(get_message_service),
+    secret_key: str | None = Header(default=None, alias="secret-key"),
+) -> MessageReadTextResponse:
+    """
+    Peek at the latest message when it is plain text (same queue position as read_base64).
+    Returns 404 'No text message' if the latest message is binary — firmware should then call read_base64.
+    """
+    file_type, text, file_name, message_uuid = service.read_latest_text_message(secret_key)
+    return MessageReadTextResponse(
+        fileType=file_type,
+        fileName=file_name,
+        messageUuid=message_uuid,
+        text=text,
+    )
 
 
 @router.get("/read_base64", response_model=MessageReadBase64Response)
