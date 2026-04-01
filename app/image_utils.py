@@ -28,12 +28,13 @@ def optimize_for_embedded_display(
     target_max_bytes: int = 60_000,
 ) -> tuple[bytes, str]:
     """
-    Resize images to fit the target display and keep payload small enough that embedded clients
+    Resize still images to fit the target display and keep payload small enough that embedded clients
     can read via JSON/base64 without OOM.
 
     Returns (optimized_bytes, optimized_content_type).
     - For PNG/JPEG: performs EXIF-aware transpose, thumbnail to max_w/max_h.
-    - Uses JPEG output (smaller) when needed; PNG output preserved only if small enough.
+    - For embedded reliability, still images are normalized to JPEG output.
+      This avoids multiple decoder edge-cases on device and gives smaller payloads.
     """
     ct = (content_type or "").strip().lower()
     if not ct.startswith("image/"):
@@ -61,18 +62,7 @@ def optimize_for_embedded_display(
 
     img.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
 
-    # First try: keep PNG if it is already PNG and small enough after resize.
-    if ct in ("image/png", "image/x-png"):
-        buf = BytesIO()
-        try:
-            img.save(buf, format="PNG", optimize=True, compress_level=9)
-            out = buf.getvalue()
-            if len(out) <= target_max_bytes:
-                return out, "image/png"
-        except Exception:
-            pass
-
-    # Default: encode JPEG (drops alpha on black background).
+    # Encode JPEG for all still images (drops alpha onto black background when present).
     if img.mode == "RGBA":
         bg = Image.new("RGB", img.size, (0, 0, 0))
         bg.paste(img, mask=img.getchannel("A"))
