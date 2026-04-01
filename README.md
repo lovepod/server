@@ -42,7 +42,7 @@ The default local address is `http://0.0.0.0:9017` and the OpenAPI UI is enabled
 - Alembic-based schema migrations
 - expiring upload tokens with rotation on validation
 - FIFO message queue semantics with delivery/ack/consume audit fields
-- request IDs, request logging, readiness, liveness, and in-memory metrics
+- request IDs, request logging, readiness, liveness, process info, and in-memory metrics
 - in-process rate limiting and upload MIME allowlisting
 - basic security headers on all responses
 
@@ -79,5 +79,6 @@ The test suite uses mocks and dependency overrides, so it does not require a liv
 - `GET /api/v1/monitoring/live`
 - `GET /api/v1/monitoring/ready`
 - `GET /api/v1/monitoring/metrics`
+- `GET /api/v1/monitoring/info`
 
 More detail lives in [docs/api.md](/Users/jaksatomovic/Workspace/LovePod/api/docs/api.md).

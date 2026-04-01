@@ -105,15 +105,31 @@ async def observability_middleware(request: Request, call_next):
     request.state.request_id = request_id
     client_ip = _get_client_ip(request)
     path = request.url.path
+    request.app.state.metrics.request_started()
 
     if settings.rate_limit_enabled and path.startswith(settings.api_prefix):
         if not path.startswith(f"{settings.api_prefix}/v1/monitoring"):
             allowed, retry_after = request.app.state.rate_limiter.check(client_ip)
             if not allowed:
                 request.app.state.metrics.incr("rate_limited_total")
+                request.app.state.metrics.record_request(
+                    method=request.method,
+                    path=path,
+                    status_code=429,
+                    duration_ms=0.0,
+                )
                 response = JSONResponse(status_code=429, content={"detail": "Rate limit exceeded"})
                 response.headers["Retry-After"] = str(retry_after)
                 response.headers["X-Request-ID"] = request_id
+                logger.warning(
+                    "request_rate_limited request_id=%s method=%s path=%s client_ip=%s retry_after=%s",
+                    request_id,
+                    request.method,
+                    path,
+                    client_ip,
+                    retry_after,
+                )
+                request.app.state.metrics.request_finished()
                 return response
 
     started = perf_counter()
@@ -121,6 +137,7 @@ async def observability_middleware(request: Request, call_next):
         response = await call_next(request)
     except Exception:
         duration_ms = (perf_counter() - started) * 1000
+        request.app.state.metrics.incr("unhandled_exceptions_total")
         request.app.state.metrics.record_request(
             method=request.method,
             path=path,
@@ -135,6 +152,7 @@ async def observability_middleware(request: Request, call_next):
             client_ip,
             duration_ms,
         )
+        request.app.state.metrics.request_finished()
         raise
 
     duration_ms = (perf_counter() - started) * 1000
@@ -158,6 +176,7 @@ async def observability_middleware(request: Request, call_next):
         client_ip,
         duration_ms,
     )
+    request.app.state.metrics.request_finished()
     return response
 
 

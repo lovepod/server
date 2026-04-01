@@ -243,10 +243,18 @@ def test_live_ready_and_metrics_endpoints_work() -> None:
         live = client.get("/api/v1/monitoring/live")
         ready = client.get("/api/v1/monitoring/ready")
         metrics = client.get("/api/v1/monitoring/metrics")
+        info = client.get("/api/v1/monitoring/info")
 
     assert live.status_code == 200
     assert live.json() == {"status": "ok"}
     assert ready.status_code == 200
     assert ready.json()["status"] == "ok"
     assert metrics.status_code == 200
-    assert "requests_total" in metrics.json()
+    metrics_payload = metrics.json()
+    assert "requests_total" in metrics_payload
+    assert "requests_in_flight" in metrics_payload
+    assert "peak_requests_in_flight" in metrics_payload
+    assert "uptime_seconds" in metrics_payload
+    assert metrics_payload["requests_in_flight"] >= 1
+    assert info.status_code == 200
+    assert info.json()["environment"] in {"development", "production"}

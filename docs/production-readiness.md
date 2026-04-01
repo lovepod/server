@@ -27,6 +27,9 @@ The backend now behaves as an ordered FIFO inbox rather than "latest message win
 - request logging added
 - readiness and liveness endpoints added
 - in-memory request metrics added
+- rate-limited and unhandled-exception counters added
+- process uptime and in-flight request tracking added
+- monitoring info endpoint added for quick deploy/runtime inspection
 
 Still recommended later:
 

@@ -127,7 +127,11 @@ Checks database connectivity and returns `200` or `503`.
 
 ### `GET /api/v1/monitoring/metrics`
 
-Returns in-memory request counters and average duration.
+Returns in-memory request counters, average duration, in-flight request counts, and process uptime.
+
+### `GET /api/v1/monitoring/info`
+
+Returns a lightweight operational summary for the running app, including environment and process uptime.
 
 ## Legacy Read Endpoints
 
