@@ -20,6 +20,7 @@ class ValidateBoxRequest(BaseModel):
 
 class ValidateBoxResponse(BaseModel):
     token: str
+    expiresAt: str | None = None
 
 
 class MessageUploadResponse(BaseModel):

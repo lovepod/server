@@ -30,6 +30,11 @@ class PayloadTooLargeError(AppError):
         super().__init__(413, detail)
 
 
+class UnsupportedMediaTypeError(AppError):
+    def __init__(self, detail: str = "Unsupported media type") -> None:
+        super().__init__(415, detail)
+
+
 class ServiceUnavailableError(AppError):
     def __init__(self, detail: str = "Service unavailable") -> None:
         super().__init__(503, detail)

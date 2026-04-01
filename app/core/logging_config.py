@@ -22,3 +22,4 @@ def configure_logging(level: str) -> None:
 
     # Reduce noise from libraries in production
     logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)

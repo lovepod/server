@@ -56,13 +56,22 @@ class Settings(BaseSettings):
     )
 
     auto_create_tables: bool = Field(
-        default=True,
+        default=False,
         description="Run SQLAlchemy create_all on startup; prefer migrations in production.",
     )
 
     sqlalchemy_pool_size: int = Field(default=5, ge=1, le=50)
     sqlalchemy_max_overflow: int = Field(default=10, ge=0, le=100)
     sqlalchemy_pool_timeout: int = Field(default=30, ge=1)
+    token_ttl_hours: int = Field(default=24 * 30, ge=1, le=24 * 365)
+    allowed_upload_mime_types: str = Field(
+        default="image/png,image/jpeg,image/gif,text/plain,application/octet-stream,binary/octet-stream"
+    )
+    rate_limit_enabled: bool = Field(default=True)
+    rate_limit_requests: int = Field(default=120, ge=1, le=10_000)
+    rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
+    security_headers_enabled: bool = Field(default=True)
+    trust_proxy_headers: bool = Field(default=True)
 
     uvicorn_host: str = Field(
         default="0.0.0.0",
@@ -119,6 +128,16 @@ class Settings(BaseSettings):
             return None
         hosts = [h.strip() for h in self.trusted_hosts.split(",") if h.strip()]
         return hosts or None
+
+    def allowed_upload_mime_type_set(self) -> set[str]:
+        raw = self.allowed_upload_mime_types.strip()
+        if not raw:
+            return set()
+        return {
+            part.strip().split(";", 1)[0].lower()
+            for part in raw.split(",")
+            if part.strip()
+        }
 
 
 settings = Settings()
