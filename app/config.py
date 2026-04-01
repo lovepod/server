@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     sqlalchemy_max_overflow: int = Field(default=10, ge=0, le=100)
     sqlalchemy_pool_timeout: int = Field(default=30, ge=1)
     token_ttl_hours: int = Field(default=24 * 30, ge=1, le=24 * 365)
+    message_lease_seconds: int = Field(default=180, ge=15, le=3600)
     allowed_upload_mime_types: str = Field(
         default="image/png,image/jpeg,image/gif,text/plain,application/octet-stream,binary/octet-stream"
     )

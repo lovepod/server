@@ -6,6 +6,7 @@ from fastapi.responses import Response
 from app.deps import get_message_service
 from app.schemas import (
     MessageAckRequest,
+    MessageLeaseResponse,
     MessageReadBase64Response,
     MessageReadTextResponse,
     MessageUploadBase64Request,
@@ -15,6 +16,25 @@ from app.schemas import (
 from app.services.message_service import MessageService
 
 router = APIRouter(prefix="/v1/message", tags=["message"])
+
+
+@router.get("/lease", response_model=MessageLeaseResponse, response_model_exclude_none=True)
+def lease_message(
+    service: MessageService = Depends(get_message_service),
+    secret_key: str | None = Header(default=None, alias="secret-key"),
+) -> MessageLeaseResponse:
+    message_uuid, lease_id, lease_expires_at, file_type, file_name, data_base64, text = service.lease_next_message(
+        secret_key
+    )
+    return MessageLeaseResponse(
+        messageUuid=message_uuid,
+        leaseId=lease_id,
+        leaseExpiresAt=lease_expires_at,
+        fileType=file_type,
+        fileName=file_name,
+        data_base64=data_base64,
+        text=text,
+    )
 
 
 @router.post("/upload", response_model=MessageUploadResponse, response_model_exclude_none=True)
@@ -120,5 +140,5 @@ def acknowledge_message(
     service: MessageService = Depends(get_message_service),
     secret_key: str | None = Header(default=None, alias="secret-key"),
 ) -> dict[str, bool]:
-    service.acknowledge_message(secret_key=secret_key, message_uuid=body.messageUuid)
+    service.acknowledge_message(secret_key=secret_key, message_uuid=body.messageUuid, lease_id=body.leaseId)
     return {"ok": True}

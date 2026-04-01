@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import base64
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -110,7 +110,8 @@ class MessageService:
             compressed = compress_image(raw)
         except Exception:
             logger.exception("compress_image failed")
-            raise BadRequestError("Could not process image") from None
+            # This is usually an unexpected runtime dependency issue; avoid a generic 500.
+            raise BadRequestError("Could not process payload") from None
 
         msg = Message(
             box_id=box.id,
@@ -192,6 +193,53 @@ class MessageService:
             raise InternalError("Could not read stored message") from None
         self._db.commit()
         return blob, msg.file_type
+
+    def lease_next_message(
+        self, secret_key: str | None
+    ) -> tuple[str, str, str, str | None, str | None, str | None, str | None]:
+        if not secret_key or not secret_key.strip():
+            raise BadRequestError("Missing secret-key")
+
+        now = datetime.now(timezone.utc)
+        sk = _normalize_secret_key(secret_key)
+        box = self._get_box_by_secret(sk)
+        msg = self._get_next_available_message_for_lease(box.id, now)
+
+        lease_uuid = str(uuid.uuid4())
+        lease_expires_at = now + timedelta(seconds=self._settings.message_lease_seconds)
+        msg.lease_uuid = lease_uuid
+        msg.leased_at = now
+        msg.lease_expires_at = lease_expires_at
+
+        ft = (msg.file_type or "").strip().lower()
+        text_payload: str | None = None
+        data_base64: str | None = None
+
+        try:
+            blob = decompress_image(msg.data)
+        except Exception:
+            logger.exception("decompress_image failed for message id=%s", msg.id)
+            raise InternalError("Could not read stored message") from None
+
+        if ft.startswith("text/"):
+            try:
+                text_payload = blob.decode("utf-8")
+            except UnicodeDecodeError as exc:
+                raise BadRequestError("Text message is not valid UTF-8") from exc
+        else:
+            data_base64 = base64.b64encode(blob).decode("ascii")
+
+        self._mark_message_delivered(msg, now)
+        self._db.commit()
+        return (
+            msg.message_uuid,
+            lease_uuid,
+            lease_expires_at.isoformat(),
+            msg.file_type,
+            msg.file_name,
+            data_base64,
+            text_payload,
+        )
 
     def read_latest_blob_base64(
         self, secret_key: str | None
@@ -285,7 +333,7 @@ class MessageService:
 
         return file_type, data_base64, file_name, message_uuid
 
-    def acknowledge_message(self, secret_key: str | None, message_uuid: str) -> None:
+    def acknowledge_message(self, secret_key: str | None, message_uuid: str, lease_id: str | None = None) -> None:
         if not secret_key or not secret_key.strip():
             raise BadRequestError("Missing secret-key")
         if not message_uuid or not message_uuid.strip():
@@ -308,7 +356,14 @@ class MessageService:
         if msg is None:
             raise NotFoundError("Message not found")
 
+        active_lease = msg.lease_uuid and msg.lease_expires_at and msg.lease_expires_at > datetime.now(timezone.utc)
+        if active_lease and (not lease_id or lease_id.strip() != msg.lease_uuid):
+            raise UnauthorizedError("Lease mismatch")
+
         msg.acknowledged_at = datetime.now(timezone.utc)
+        msg.lease_uuid = None
+        msg.leased_at = None
+        msg.lease_expires_at = None
         self._db.commit()
 
     def _is_allowed_content_type(self, content_type: str) -> bool:
@@ -349,8 +404,25 @@ class MessageService:
             raise NotFoundError("No message for this box")
         return msg
 
-    def _mark_message_delivered(self, msg: Message) -> None:
-        now = datetime.now(timezone.utc)
+    def _get_next_available_message_for_lease(self, box_id: int, now: datetime) -> Message:
+        q_msg = (
+            select(Message)
+            .where(
+                Message.box_id == box_id,
+                Message.acknowledged_at.is_(None),
+                Message.consumed_at.is_(None),
+                ((Message.lease_expires_at.is_(None)) | (Message.lease_expires_at <= now)),
+            )
+            .order_by(Message.created_at.asc(), Message.id.asc())
+            .limit(1)
+        )
+        msg = self._db.execute(q_msg).scalar_one_or_none()
+        if msg is None:
+            raise NotFoundError("No message for this box")
+        return msg
+
+    def _mark_message_delivered(self, msg: Message, now: datetime | None = None) -> None:
+        now = now or datetime.now(timezone.utc)
         msg.delivery_attempts = (msg.delivery_attempts or 0) + 1
         if msg.first_delivered_at is None:
             msg.first_delivered_at = now

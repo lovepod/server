@@ -61,6 +61,9 @@ class Message(Base):
     delivery_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     first_delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_uuid: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    leased_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

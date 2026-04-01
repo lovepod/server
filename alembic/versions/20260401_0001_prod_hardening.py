@@ -96,6 +96,9 @@ def upgrade() -> None:
             sa.Column("delivery_attempts", sa.Integer(), nullable=False, server_default="0"),
             sa.Column("first_delivered_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column("last_delivered_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("lease_uuid", sa.String(length=255), nullable=True),
+            sa.Column("leased_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("lease_expires_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column("acknowledged_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
         )
@@ -109,6 +112,12 @@ def upgrade() -> None:
                 batch_op.add_column(sa.Column("first_delivered_at", sa.DateTime(timezone=True), nullable=True))
             if not _has_column(inspector, "message", "last_delivered_at"):
                 batch_op.add_column(sa.Column("last_delivered_at", sa.DateTime(timezone=True), nullable=True))
+            if not _has_column(inspector, "message", "lease_uuid"):
+                batch_op.add_column(sa.Column("lease_uuid", sa.String(length=255), nullable=True))
+            if not _has_column(inspector, "message", "leased_at"):
+                batch_op.add_column(sa.Column("leased_at", sa.DateTime(timezone=True), nullable=True))
+            if not _has_column(inspector, "message", "lease_expires_at"):
+                batch_op.add_column(sa.Column("lease_expires_at", sa.DateTime(timezone=True), nullable=True))
             if not _has_column(inspector, "message", "acknowledged_at"):
                 batch_op.add_column(sa.Column("acknowledged_at", sa.DateTime(timezone=True), nullable=True))
             if not _has_column(inspector, "message", "consumed_at"):

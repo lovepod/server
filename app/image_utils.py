@@ -8,8 +8,6 @@ from __future__ import annotations
 import zlib
 from io import BytesIO
 
-from PIL import Image, ImageOps
-
 
 def compress_image(data: bytes) -> bytes:
     c = zlib.compressobj(level=zlib.Z_BEST_COMPRESSION, wbits=-zlib.MAX_WBITS)
@@ -42,6 +40,12 @@ def optimize_for_embedded_display(
         return raw, content_type
     if ct == "image/gif":
         # Keep GIF as-is (resizing animated GIF safely is more complex).
+        return raw, content_type
+
+    try:
+        from PIL import Image, ImageOps  # type: ignore
+    except Exception:
+        # Pillow not available in runtime (or failed to load native codecs) — keep as-is.
         return raw, content_type
 
     try:

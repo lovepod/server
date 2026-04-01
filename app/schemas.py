@@ -61,3 +61,14 @@ class MessageReadTextResponse(BaseModel):
 
 class MessageAckRequest(BaseModel):
     messageUuid: str = Field(..., min_length=1)
+    leaseId: str | None = Field(default=None, min_length=1)
+
+
+class MessageLeaseResponse(BaseModel):
+    messageUuid: str
+    leaseId: str
+    leaseExpiresAt: str
+    fileType: str | None = None
+    fileName: str | None = None
+    data_base64: str | None = None
+    text: str | None = None
