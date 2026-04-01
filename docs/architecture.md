@@ -63,6 +63,9 @@ The backend is a small FastAPI service that acts as the server-side queue for Lo
 ### Message Read
 
 - Firmware authenticates with `secret-key`
+- Preferred embedded path is unified `/lease`
+- Lease responses carry either `text` or `data_base64` in one envelope
+- A leased message is hidden from other polls until acknowledged or until its lease expires
 - Queue selection is FIFO by `created_at`
 - `read` returns raw bytes for the next pending inbox item
 - `read_text` returns decoded UTF-8 text only when the next pending item is `text/*`

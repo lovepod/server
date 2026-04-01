@@ -69,6 +69,7 @@ The test suite uses mocks and dependency overrides, so it does not require a liv
 - `POST /api/v1/message/upload`
 - `POST /api/v1/message/upload_base64`
 - `POST /api/v1/message/upload_text`
+- `GET /api/v1/message/lease`
 - `GET /api/v1/message/read`
 - `GET /api/v1/message/read_text`
 - `GET /api/v1/message/read_base64`

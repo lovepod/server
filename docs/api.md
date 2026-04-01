@@ -72,6 +72,27 @@ JSON upload for binary payloads encoded as base64.
 
 JSON upload for plain UTF-8 text messages.
 
+### `GET /api/v1/message/lease`
+
+Primary firmware endpoint.
+
+Returns the next pending FIFO message plus a temporary lease:
+
+```json
+{
+  "messageUuid": "msg-123",
+  "leaseId": "lease-abc",
+  "leaseExpiresAt": "2030-01-01T00:00:00+00:00",
+  "fileType": "text/plain",
+  "fileName": "message.txt",
+  "text": "Volim te"
+}
+```
+
+For binary payloads the same response shape is used, but `data_base64` is returned instead of `text`.
+
+The firmware should acknowledge the message with the same `leaseId`. If the device disappears and the lease expires, the message becomes visible again for re-delivery.
+
 ### `GET /api/v1/message/read`
 
 Returns the next pending FIFO message as raw bytes with a best-effort `Content-Type`.
@@ -90,7 +111,7 @@ Returns the next pending FIFO message as base64 and marks it consumed immediatel
 
 ### `POST /api/v1/message/ack`
 
-Marks a specific message UUID acknowledged for the authenticated box.
+Marks a specific message UUID acknowledged for the authenticated box. When the message was leased, the caller should also send `leaseId`.
 
 ### `GET /api/v1/monitoring/heartbeat`
 
@@ -107,6 +128,12 @@ Checks database connectivity and returns `200` or `503`.
 ### `GET /api/v1/monitoring/metrics`
 
 Returns in-memory request counters and average duration.
+
+## Legacy Read Endpoints
+
+`/read`, `/read_text`, `/read_base64`, and `/consume_base64` are still present for compatibility and diagnostics.
+
+The preferred embedded integration path is now `/lease` + `/ack`.
 
 ## Error Shape
 

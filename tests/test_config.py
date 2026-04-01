@@ -28,6 +28,7 @@ def test_settings_uppercases_log_level_and_parses_lists() -> None:
     assert settings.cors_origin_list() == ["https://a.example.com", "https://b.example.com"]
     assert settings.trusted_host_list() == ["api.example.com", "localhost"]
     assert "image/png" in settings.allowed_upload_mime_type_set()
+    assert settings.message_lease_seconds == 180
 
 
 def test_settings_defaults_cors_to_wildcard() -> None:

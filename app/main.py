@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import logging
+import os
+from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
+from alembic import command
+from alembic.config import Config as AlembicConfig
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -21,9 +25,32 @@ from app.routers import box, message, monitoring
 configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
 
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _run_alembic_migrations() -> None:
+    """
+    Ensure DB schema is compatible with current ORM models.
+    On serverless, deploys can update code before migrations are applied; this avoids 500s like
+    "UndefinedColumn" on production.
+    """
+    cfg = AlembicConfig(str(_PROJECT_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", "alembic")
+    cfg.set_main_option("prepend_sys_path", ".")
+    cfg.set_main_option("sqlalchemy.url", settings.database_url)
+    command.upgrade(cfg, "head")
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    if os.getenv("RUN_MIGRATIONS_ON_STARTUP", "1").strip().lower() not in {"0", "false", "no"}:
+        try:
+            _run_alembic_migrations()
+            logger.info("alembic_migrations_applied")
+        except Exception:
+            # Do not crash the app on migration errors; logs will show the root cause.
+            logger.exception("alembic_migrations_failed")
+
     if settings.auto_create_tables:
         Base.metadata.create_all(bind=engine)
     yield

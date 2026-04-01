@@ -142,6 +142,33 @@ def test_read_route_returns_raw_response() -> None:
     assert response.headers["content-type"].startswith("image/png")
 
 
+def test_lease_route_returns_unified_payload() -> None:
+    service = SimpleNamespace(
+        lease_next_message=lambda secret_key: (
+            "msg-lease",
+            "lease-1",
+            "2030-01-01T00:00:00+00:00",
+            "text/plain",
+            "message.txt",
+            None,
+            "Volim te",
+        )
+    )
+
+    with override_dependencies({get_message_service: lambda: service}) as client:
+        response = client.get("/api/v1/message/lease", headers={"secret-key": "AB12CD34"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "messageUuid": "msg-lease",
+        "leaseId": "lease-1",
+        "leaseExpiresAt": "2030-01-01T00:00:00+00:00",
+        "fileType": "text/plain",
+        "fileName": "message.txt",
+        "text": "Volim te",
+    }
+
+
 def test_read_text_route_returns_text_payload() -> None:
     service = SimpleNamespace(
         read_latest_text_message=lambda secret_key: ("text/plain", "Volim te", "message.txt", "msg-1")
@@ -184,17 +211,21 @@ def test_consume_base64_route_returns_payload() -> None:
 def test_ack_route_returns_ok() -> None:
     captured = {}
 
-    def acknowledge_message(*, secret_key, message_uuid):
-        captured.update(secret_key=secret_key, message_uuid=message_uuid)
+    def acknowledge_message(*, secret_key, message_uuid, lease_id=None):
+        captured.update(secret_key=secret_key, message_uuid=message_uuid, lease_id=lease_id)
 
     service = SimpleNamespace(acknowledge_message=acknowledge_message)
 
     with override_dependencies({get_message_service: lambda: service}) as client:
-        response = client.post("/api/v1/message/ack", headers={"secret-key": "AB12CD34"}, json={"messageUuid": "msg-4"})
+        response = client.post(
+            "/api/v1/message/ack",
+            headers={"secret-key": "AB12CD34"},
+            json={"messageUuid": "msg-4", "leaseId": "lease-4"},
+        )
 
     assert response.status_code == 200
     assert response.json() == {"ok": True}
-    assert captured == {"secret_key": "AB12CD34", "message_uuid": "msg-4"}
+    assert captured == {"secret_key": "AB12CD34", "message_uuid": "msg-4", "lease_id": "lease-4"}
 
 
 def test_app_error_handler_returns_domain_error_shape() -> None:

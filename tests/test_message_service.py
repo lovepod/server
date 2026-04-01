@@ -29,6 +29,7 @@ class ScalarResult:
 def make_settings(max_upload_bytes: int = 1024):
     return SimpleNamespace(
         max_upload_bytes=max_upload_bytes,
+        message_lease_seconds=180,
         allowed_upload_mime_type_set=lambda: {
             "image/png",
             "image/jpeg",
@@ -54,6 +55,9 @@ def make_message(**kwargs):
         "delivery_attempts": 0,
         "first_delivered_at": None,
         "last_delivered_at": None,
+        "lease_uuid": None,
+        "leased_at": None,
+        "lease_expires_at": None,
         "acknowledged_at": None,
         "consumed_at": None,
     }
@@ -147,7 +151,7 @@ def test_upload_wraps_compression_failures() -> None:
     service = make_service(db)
 
     with patch("app.services.message_service.compress_image", side_effect=RuntimeError("boom")):
-        with pytest.raises(BadRequestError, match="Could not process image"):
+        with pytest.raises(BadRequestError, match="Could not process payload"):
             service.upload("good-token", b"abc", "x.bin", "application/octet-stream")
 
 
@@ -307,6 +311,20 @@ def test_acknowledge_message_marks_specific_message_acknowledged() -> None:
     db.commit.assert_called_once()
 
 
+def test_acknowledge_message_rejects_lease_mismatch() -> None:
+    db = Mock()
+    message = make_message(
+        message_uuid="msg-77",
+        lease_uuid="lease-1",
+        lease_expires_at=datetime.now(timezone.utc) + timedelta(minutes=2),
+    )
+    db.execute.side_effect = [ScalarResult(SimpleNamespace(id=1)), ScalarResult(message)]
+    service = make_service(db)
+
+    with pytest.raises(UnauthorizedError, match="Lease mismatch"):
+        service.acknowledge_message("AB12CD34", "msg-77", lease_id="wrong-lease")
+
+
 def test_acknowledge_message_rejects_missing_uuid() -> None:
     with pytest.raises(BadRequestError, match="Missing messageUuid"):
         make_service(Mock()).acknowledge_message("AB12CD34", "")
@@ -323,3 +341,46 @@ def test_reads_use_fifo_order_not_latest_order() -> None:
 
     assert message_uuid == "older"
     assert older.delivery_attempts == 1
+
+
+def test_lease_next_message_returns_text_payload_and_sets_lease() -> None:
+    db = Mock()
+    message = make_message(file_type="text/plain; charset=utf-8", file_name="message.txt")
+    db.execute.side_effect = [ScalarResult(SimpleNamespace(id=1)), ScalarResult(message)]
+    service = make_service(db)
+
+    with patch("app.services.message_service.decompress_image", return_value=b"Volim te"), patch(
+        "app.services.message_service.uuid.uuid4", return_value="lease-123"
+    ):
+        message_uuid, lease_id, lease_expires_at, file_type, file_name, data_base64, text = service.lease_next_message(
+            "AB12CD34"
+        )
+
+    assert message_uuid == "msg-1"
+    assert lease_id == "lease-123"
+    assert lease_expires_at
+    assert file_type == "text/plain; charset=utf-8"
+    assert file_name == "message.txt"
+    assert data_base64 is None
+    assert text == "Volim te"
+    assert message.lease_uuid == "lease-123"
+    assert message.delivery_attempts == 1
+    db.commit.assert_called_once()
+
+
+def test_lease_next_message_returns_base64_for_binary_payload() -> None:
+    db = Mock()
+    message = make_message(file_type="image/png")
+    db.execute.side_effect = [ScalarResult(SimpleNamespace(id=1)), ScalarResult(message)]
+    service = make_service(db)
+
+    with patch("app.services.message_service.decompress_image", return_value=b"hello"), patch(
+        "app.services.message_service.uuid.uuid4", return_value="lease-456"
+    ):
+        message_uuid, lease_id, _, file_type, _, data_base64, text = service.lease_next_message("AB12CD34")
+
+    assert message_uuid == "msg-1"
+    assert lease_id == "lease-456"
+    assert file_type == "image/png"
+    assert data_base64 == base64.b64encode(b"hello").decode("ascii")
+    assert text is None
