@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.core.exceptions import BadRequestError
 from app.deps import get_box_service, get_message_service
 from app.main import app
+from app.config import settings
 
 
 @contextmanager
@@ -258,3 +259,58 @@ def test_live_ready_and_metrics_endpoints_work() -> None:
     assert metrics_payload["requests_in_flight"] >= 1
     assert info.status_code == 200
     assert info.json()["environment"] in {"development", "production"}
+
+
+def test_update_check_returns_no_update_by_default() -> None:
+    with override_dependencies() as client:
+        response = client.get(
+            "/api/v1/device/update/check",
+            params={"version": "0.1.0", "board": "LOVEPOD", "channel": "stable"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["updateAvailable"] is False
+    assert response.json()["channel"] == "stable"
+
+
+def test_update_check_returns_metadata_when_newer_firmware_is_enabled() -> None:
+    original = {
+        "firmware_update_enabled": settings.firmware_update_enabled,
+        "firmware_update_version": settings.firmware_update_version,
+        "firmware_update_url": settings.firmware_update_url,
+        "firmware_update_sha256": settings.firmware_update_sha256,
+        "firmware_update_channel": settings.firmware_update_channel,
+        "firmware_update_notes": settings.firmware_update_notes,
+        "firmware_update_size_bytes": settings.firmware_update_size_bytes,
+        "firmware_update_mandatory": settings.firmware_update_mandatory,
+    }
+    settings.firmware_update_enabled = True
+    settings.firmware_update_version = "0.1.1"
+    settings.firmware_update_url = "https://cdn.example.com/lovepod-0.1.1.bin"
+    settings.firmware_update_sha256 = "abc123"
+    settings.firmware_update_channel = "stable"
+    settings.firmware_update_notes = "Bug fixes"
+    settings.firmware_update_size_bytes = 123456
+    settings.firmware_update_mandatory = True
+    try:
+        with override_dependencies() as client:
+            response = client.get(
+                "/api/v1/device/update/check",
+                params={"version": "0.1.0", "board": "LOVEPOD", "channel": "stable"},
+            )
+    finally:
+        for key, value in original.items():
+            setattr(settings, key, value)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "updateAvailable": True,
+        "version": "0.1.1",
+        "url": "https://cdn.example.com/lovepod-0.1.1.bin",
+        "sha256": "abc123",
+        "mandatory": True,
+        "channel": "stable",
+        "notes": "Bug fixes",
+        "sizeBytes": 123456,
+        "checkedAt": response.json()["checkedAt"],
+    }

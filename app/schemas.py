@@ -72,3 +72,15 @@ class MessageLeaseResponse(BaseModel):
     fileName: str | None = None
     data_base64: str | None = None
     text: str | None = None
+
+
+class FirmwareUpdateCheckResponse(BaseModel):
+    updateAvailable: bool
+    version: str | None = None
+    url: str | None = None
+    sha256: str | None = None
+    mandatory: bool = False
+    channel: str
+    notes: str | None = None
+    sizeBytes: int | None = None
+    checkedAt: str

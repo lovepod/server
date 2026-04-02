@@ -73,6 +73,39 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
     security_headers_enabled: bool = Field(default=True)
     trust_proxy_headers: bool = Field(default=True)
+    firmware_update_enabled: bool = Field(
+        default=False,
+        description="Expose a newer firmware version to devices when true.",
+    )
+    firmware_update_version: str | None = Field(
+        default=None,
+        description="Newest firmware version advertised to devices, e.g. 0.1.1.",
+    )
+    firmware_update_url: str | None = Field(
+        default=None,
+        description="Absolute HTTPS URL to the OTA .bin payload.",
+    )
+    firmware_update_sha256: str | None = Field(
+        default=None,
+        description="Optional lowercase SHA-256 checksum for the OTA payload.",
+    )
+    firmware_update_channel: str = Field(
+        default="stable",
+        description="Release channel exposed to devices.",
+    )
+    firmware_update_notes: str | None = Field(
+        default=None,
+        description="Optional short release notes shown in logs or dashboards.",
+    )
+    firmware_update_size_bytes: int | None = Field(
+        default=None,
+        ge=1,
+        description="Optional expected OTA binary size in bytes.",
+    )
+    firmware_update_mandatory: bool = Field(
+        default=False,
+        description="Whether the published OTA should be treated as mandatory.",
+    )
 
     uvicorn_host: str = Field(
         default="0.0.0.0",

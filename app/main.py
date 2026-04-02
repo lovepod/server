@@ -20,7 +20,7 @@ from app.core.logging_config import configure_logging
 from app.core.metrics import MetricsRegistry
 from app.core.rate_limit import InMemoryRateLimiter
 from app.db import Base, engine
-from app.routers import box, message, monitoring
+from app.routers import box, message, monitoring, update
 
 configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
@@ -89,6 +89,7 @@ if _hosts is not None:
 app.include_router(box.router, prefix=settings.api_prefix)
 app.include_router(message.router, prefix=settings.api_prefix)
 app.include_router(monitoring.router, prefix=settings.api_prefix)
+app.include_router(update.router, prefix=settings.api_prefix)
 
 
 def _get_client_ip(request: Request) -> str:
